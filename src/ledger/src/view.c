@@ -41,17 +41,18 @@ void display_transaction_page();
 //unsigned char view_scrolling_direction = 0;
 //
 //// Current scrolling position of key msg
-//unsigned short key_scrolling_step = 0;
+unsigned short key_scrolling_step = 0;
 //// Maximum number of characters to scroll key msg (view_scrolling_total_size - screen size)
-//unsigned short key_scrolling_step_count = 0;
+unsigned short key_scrolling_step_count = 0;
 //// Total size of the key message
-//unsigned short key_scrolling_total_size = 0;
+unsigned short key_scrolling_total_size = 0;
 //// Direction of the key msg scroll (0 - left to right, 1 - right to left)
-//unsigned char key_scrolling_direction = 0;
+unsigned char key_scrolling_direction = 0;
 
+volatile char screenKeyBuffer[SCREEN_WIDTH];
 volatile char transactionDataKey[MAX_CHARS_PER_KEY_LINE];
 volatile char transactionDataValue[MAX_CHARS_PER_VALUE_LINE];
-volatile char pageInfo[20];
+volatile char pageInfo[SCREEN_WIDTH];
 
 // Index of the currently displayed page
 int transactionDetailsCurrentPage;
@@ -112,6 +113,14 @@ static const bagl_element_t bagl_ui_transaction_info[] = {
     UI_LabelLine(2, 0, 19, 128, 11, 0xFFFFFF, 0x000000,(const char*)transactionDataKey),
     UI_LabelLine(3, 0, 30, 128, 11, 0xFFFFFF, 0x000000,(const char*)transactionDataValue),
 };
+
+static const bagl_element_t bagl_ui_transaction_key_info[] = {
+        UI_FillRectangle(0, 0, 0, 128, 32, 0x000000, 0xFFFFFF),
+        UI_Icon(0, 0, 0, 7, 7, BAGL_GLYPH_ICON_LEFT),
+        UI_Icon(0, 128-7, 0, 7, 7, BAGL_GLYPH_ICON_RIGHT),
+        UI_LabelLine(1, 0, 8, 128, 11, 0xFFFFFF, 0x000000,(const char*)pageInfo),
+        UI_LabelLine(2, 0, 19, 128, 11, 0xFFFFFF, 0x000000,(const char*)transactionDataKey),
+};
 //------ View elements
 
 //------ Event handlers
@@ -145,12 +154,36 @@ static unsigned int bagl_ui_sign_transaction_button(unsigned int button_mask,
     return 0;
 }
 
+void refresh_key()
+{
+    int start = key_scrolling_step;
+    int end = key_scrolling_step + SCREEN_WIDTH;
+    if (end > key_scrolling_total_size) {
+        end = key_scrolling_total_size;
+    }
+    os_memcpy((void*)screenKeyBuffer, (const void*)(transactionDataKey + start), end - start - 1);
+    screenKeyBuffer[end-start - 1] = '\0';
+}
+
 const bagl_element_t* ui_transaction_info_prepro(const bagl_element_t *element) {
 
+    UX_CALLBACK_SET_INTERVAL(2000);
+
     switch (element->component.userid) {
-        case 0x01:  UX_CALLBACK_SET_INTERVAL(2000); break;
-        case 0x02:  UX_CALLBACK_SET_INTERVAL(MAX(3000, 1000 + bagl_label_roundtrip_duration_ms(element, 7))); break;
-        case 0x03:  UX_CALLBACK_SET_INTERVAL(MAX(3000, 1000 + bagl_label_roundtrip_duration_ms(element, 7))); break;
+        case 0x01:  {
+            //UX_CALLBACK_SET_INTERVAL(2000);
+        } break;
+        // Key
+        case 0x02:  {
+            //if (key_scrolling_total_size > SCREEN_WIDTH) {
+              //  refresh_key();
+            //}
+            //UX_CALLBACK_SET_INTERVAL(200);
+        } break;
+            // Value
+        case 0x03:  {
+            UX_CALLBACK_SET_INTERVAL(MAX(3000, 1000 + bagl_label_roundtrip_duration_ms(element, 7)));
+        } break;
     }
     return element;
 }
@@ -228,14 +261,20 @@ void update_transaction_page_info()
             transactionValuePageCount = index;
 
             if (transactionValuePageCount > 1) {
-                int position = strlen((char *) transactionDataKey);
+                int endPosition = strlen((char *) transactionDataKey);
                 snprintf(
-                        (char *) transactionDataKey + position,
-                        sizeof(transactionDataKey) - position,
-                        " %02d/%02d",
+                        (char *) transactionDataKey + endPosition,
+                        sizeof(transactionDataKey) - endPosition,
+                        " %02d/%02d ",
                         transactionValuePageIndex + 1,
                         transactionValuePageCount);
             }
+
+            key_scrolling_total_size = strlen((char *) transactionDataKey);
+            key_scrolling_step_count = key_scrolling_total_size - SCREEN_WIDTH;
+            key_scrolling_step = 0;
+
+            refresh_key();
         }
 
         switch (current_sigtype) {
